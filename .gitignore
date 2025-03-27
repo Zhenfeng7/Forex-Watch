@@ -11,4 +11,5 @@ npm-debug.log
 dist/
 build/
 
-
+# Ignore Mac OS X files
+.DS_Store
