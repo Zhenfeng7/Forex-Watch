@@ -2,9 +2,27 @@
 // CORE DOMAIN TYPES
 // =============================================================================
 
-export type Currency = 
-  | 'USD' | 'EUR' | 'GBP' | 'JPY' | 'AUD' | 'CAD' | 'CHF' | 'CNY' | 'SEK' | 'NZD'
-  | 'MXN' | 'SGD' | 'HKD' | 'NOK' | 'TRY' | 'ZAR' | 'BRL' | 'INR' | 'KRW' | 'PLN';
+export type Currency =
+  | 'USD'
+  | 'EUR'
+  | 'GBP'
+  | 'JPY'
+  | 'AUD'
+  | 'CAD'
+  | 'CHF'
+  | 'CNY'
+  | 'SEK'
+  | 'NZD'
+  | 'MXN'
+  | 'SGD'
+  | 'HKD'
+  | 'NOK'
+  | 'TRY'
+  | 'ZAR'
+  | 'BRL'
+  | 'INR'
+  | 'KRW'
+  | 'PLN';
 
 export type AlertDirection = 'gte' | 'lte';
 export type UserPlan = 'free' | 'pro';
