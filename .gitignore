@@ -64,3 +64,6 @@ temp/
 
 # MongoDB
 data/
+
+# Private documentation (interview prep, personal notes)
+docs-private/

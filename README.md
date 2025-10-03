@@ -246,6 +246,12 @@ This project is private and proprietary.
 
 ---
 
+## 📚 Documentation
+
+- **[Architecture Decision Records (ADRs)](./docs/adrs/)** - Key technical decisions and trade-offs
+- **[Development Journal](./docs/dev-journal.md)** - Daily progress and technical insights
+- **[Issues & Solutions](./docs/issues-solved.md)** - Bugs encountered and debugging process
+
 ## 🔗 Quick Links
 
 - [Environment Variables](./env.example)
