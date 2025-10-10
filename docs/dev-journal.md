@@ -68,7 +68,7 @@
 
 ### October 3, 2025 - M1 Backend Skeleton (In Progress)
 
-**Time spent so far**: ~2 hours
+**Time spent so far**: ~3 hours
 
 **What's being built:**
 
@@ -103,6 +103,22 @@
    - `formatErrorResponse()` to strip sensitive data from error responses
    - All errors include statusCode, code, and optional details
 
+5. **Error Handling Middleware** (`src/middleware/errorHandler.ts`)
+   - Centralized error handler catches all thrown errors
+   - Two middleware functions: `errorHandler()` and `notFoundHandler()`
+   - Distinguishes operational errors (show to client) from programmer errors (hide details)
+   - Different logging levels: warn for operational, error for programmer bugs
+   - Production mode hides stack traces and sensitive information
+   - 404 handler for undefined routes
+   - Installed `express-async-errors` for automatic async error handling
+
+6. **Health Check Routes** (`src/routes/health.ts`)
+   - Simple health endpoint: `GET /health` returns { "status": "ok" }
+   - Detailed health endpoint: `GET /api/v1/health` with database status, uptime, timestamp
+   - No authentication required (must be accessible by load balancers)
+   - Fast response times (< 10ms for simple, < 50ms for detailed)
+   - Uses `isDatabaseConnected()` helper from database config
+
 **Technical insights:**
 
 - **Config validation at startup**: Using Zod to validate env vars catches misconfiguration immediately. Better than runtime errors 10 minutes after deployment.
@@ -114,6 +130,14 @@
 - **Error class hierarchy**: By extending Error and using `Error.captureStackTrace()`, we get clean stack traces. The `Object.setPrototypeOf()` call is necessary for TypeScript to make `instanceof` checks work correctly.
 
 - **Operational vs Programmer errors**: This distinction is crucial. Operational errors (ValidationError, NotFoundError) are expected and safe to show users. Programmer errors (TypeError, ReferenceError) are bugs and should hide details in production.
+
+- **Error middleware must have 4 parameters**: Express recognizes error middleware by signature: `(err, req, res, next)`. Without all 4 params, Express treats it as normal middleware and won't catch errors.
+
+- **express-async-errors package**: Without this, async errors need manual `try/catch` or `.catch()` in every route. This package patches Express to automatically catch async errors, making code cleaner.
+
+- **Health checks return 200 even if DB down**: Server is still functional (can serve health checks, static files). Monitoring tools can see database status in response body. Only return 503 if server truly can't function.
+
+- **Two health endpoints for different use cases**: Load balancers need fast checks (no DB query), monitoring dashboards need detailed status. Separating them optimizes for each use case.
 
 **Design decisions:**
 
@@ -133,6 +157,12 @@
    - Parse once at startup, export singleton config object
    - If parsing fails, throw error immediately (don't start server)
 
+4. **Centralized error handling vs try/catch in routes:**
+   - Centralized: Single middleware handles all errors, ensures consistency
+   - Try/catch in routes: Duplicates logic, easy to have inconsistent error formats
+   - With middleware, controllers stay clean and focused on business logic
+   - Error handling logic can be tested independently
+
 **Challenges encountered:**
 
 - Understanding TypeScript's prototype chain for custom errors (needed `Object.setPrototypeOf`)
@@ -140,12 +170,10 @@
 
 **What's next:**
 
-- Step 5: Error handling middleware (catches thrown errors, formats responses)
-- Step 6: Request validation middleware (Zod validation for routes)
-- Step 7: Health check routes
-- Step 8: Express app setup
-- Step 9: Server entry point
-- Step 10: Integration tests
+- Step 7: Express app setup with all middleware
+- Step 8: Server entry point with graceful shutdown
+- Step 9: Manual testing to verify everything works
+- Then commit and push to GitHub
 
 **Interview talking points from today:**
 
@@ -158,7 +186,10 @@
 - Environment setup (.env file): 0.25 hours
 - Step 1-3 (config, logger, database): 0.5 hours
 - Step 4 (error utilities) with detailed planning: 1 hour
-- Documentation and ADR updates: 0.25 hours
+- Step 5 (error middleware) with package install: 0.5 hours
+- Step 6 (health check routes): 0.25 hours
+- Documentation updates: 0.25 hours
+- Git setup and push to GitHub: 0.25 hours
 
 ---
 
@@ -208,7 +239,7 @@
 
 **Started**: October 3, 2025  
 **Estimated time**: 6-8 hours  
-**Time spent so far**: ~2 hours
+**Time spent so far**: ~3 hours
 
 **Completed work:**
 
@@ -216,15 +247,14 @@
 - [x] Pino logging configuration
 - [x] MongoDB connection with Mongoose
 - [x] Error handling utilities (custom error classes)
+- [x] Error handling middleware (global error handler)
+- [x] Health check endpoints (`/health`, `/api/v1/health`)
 
 **In progress:**
 
-- [ ] Express application setup
-- [ ] Error handling middleware (global error handler)
-- [ ] Request validation middleware
-- [ ] Health check endpoints (`/health`, `/api/v1/health`)
+- [ ] Express application setup with all middleware
 - [ ] Server entry point with graceful shutdown
-- [ ] Basic testing setup (Vitest + Supertest)
+- [ ] Manual testing
 - [ ] API versioning structure
 - [ ] CORS configuration
 - [ ] Security headers (Helmet)
