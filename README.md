@@ -237,9 +237,18 @@ Development-ready local setup with production-oriented architecture.
 
 This project includes a production-ready Express.js + TypeScript boilerplate that can be extracted for other projects!
 
+**🔗 GitHub Template:** [express-api-boilerplate](https://github.com/Zhenfeng7/express-api-boilerplate)
+
 ### Quick Start
 
-Create a new API project from this boilerplate:
+**Option 1: Use GitHub Template** (Recommended)
+
+```bash
+# Click "Use this template" on GitHub or:
+gh repo create my-new-api --template Zhenfeng7/express-api-boilerplate
+```
+
+**Option 2: Use Local Script**
 
 ```bash
 ./scripts/create-boilerplate.sh my-new-api
@@ -259,10 +268,13 @@ npm run dev
 - ✅ Security middleware (Helmet, CORS)
 - ✅ Graceful shutdown
 - ✅ Health check endpoints
+- ✅ Example files (model, controller, routes)
 
 ### Documentation
 
-See [Boilerplate Guide](./docs/boilerplate-guide.md) for detailed instructions on extracting and customizing the infrastructure for your own projects.
+- [GitHub Template Repository](https://github.com/Zhenfeng7/express-api-boilerplate)
+- [Boilerplate Guide](./docs/boilerplate-guide.md) - Local extraction instructions
+- [Template README](https://github.com/Zhenfeng7/express-api-boilerplate#readme) - Comprehensive usage guide
 
 ---
 
