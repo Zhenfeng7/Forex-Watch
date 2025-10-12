@@ -68,7 +68,7 @@
 
 ### October 3, 2025 - M1 Backend Skeleton (In Progress)
 
-**Time spent so far**: ~3 hours
+**Time spent so far**: ~3.5 hours
 
 **What's being built:**
 
@@ -119,6 +119,17 @@
    - Fast response times (< 10ms for simple, < 50ms for detailed)
    - Uses `isDatabaseConnected()` helper from database config
 
+7. **Express App Setup** (`src/app.ts`)
+   - Creates and configures Express application with all middleware
+   - Middleware stack in correct order: security → parsing → logging → routes → errors
+   - Security: Helmet (headers) + CORS (frontend access)
+   - Parsing: JSON, URL-encoded, cookies
+   - Logging: Pino HTTP with request/response logging (ignores /health for noise reduction)
+   - Mounts health router at two paths: `/health` and `/api/v1`
+   - 404 handler before error handler
+   - Exported as function for testability
+   - Installed packages: express, helmet, cors, pino-http, cookie-parser
+
 **Technical insights:**
 
 - **Config validation at startup**: Using Zod to validate env vars catches misconfiguration immediately. Better than runtime errors 10 minutes after deployment.
@@ -138,6 +149,12 @@
 - **Health checks return 200 even if DB down**: Server is still functional (can serve health checks, static files). Monitoring tools can see database status in response body. Only return 503 if server truly can't function.
 
 - **Two health endpoints for different use cases**: Load balancers need fast checks (no DB query), monitoring dashboards need detailed status. Separating them optimizes for each use case.
+
+- **express-async-errors must be imported first**: This package patches Express to catch async errors automatically. Must be imported before creating the Express app to properly monkey-patch Promise handling.
+
+- **Middleware order is critical in Express**: Security first (helmet, cors), then parsing (json, cookies), then logging, then routes, then 404, finally error handler. Each layer depends on previous ones. Error handler must be absolute last to catch everything.
+
+- **Ignore health checks in logs**: `/health` endpoint gets called every 10 seconds by load balancers. Logging these creates noise and fills logs with useless data. Using `autoLogging.ignore` keeps logs clean.
 
 **Design decisions:**
 
@@ -188,8 +205,9 @@
 - Step 4 (error utilities) with detailed planning: 1 hour
 - Step 5 (error middleware) with package install: 0.5 hours
 - Step 6 (health check routes): 0.25 hours
+- Git commit and push: 0.25 hours
+- Step 7 (Express app setup) with package installs: 0.5 hours
 - Documentation updates: 0.25 hours
-- Git setup and push to GitHub: 0.25 hours
 
 ---
 
@@ -239,7 +257,7 @@
 
 **Started**: October 3, 2025  
 **Estimated time**: 6-8 hours  
-**Time spent so far**: ~3 hours
+**Time spent so far**: ~3.5 hours
 
 **Completed work:**
 
@@ -249,15 +267,15 @@
 - [x] Error handling utilities (custom error classes)
 - [x] Error handling middleware (global error handler)
 - [x] Health check endpoints (`/health`, `/api/v1/health`)
+- [x] Express application setup with all middleware
+- [x] API versioning structure (`/api/v1`)
+- [x] CORS configuration
+- [x] Security headers (Helmet)
 
 **In progress:**
 
-- [ ] Express application setup with all middleware
 - [ ] Server entry point with graceful shutdown
-- [ ] Manual testing
-- [ ] API versioning structure
-- [ ] CORS configuration
-- [ ] Security headers (Helmet)
+- [ ] Manual testing with npm run dev
 
 **Technical approach:**
 
@@ -292,6 +310,139 @@
 - How to handle timezones for alert triggering? (UTC internally, display in user's timezone)
 - Rate limit strategy: per-IP or per-user? (Both: per-IP for public routes, per-user for authenticated)
 - Should alerts pause when rate is unavailable? (Yes, set flag `lastCheckError`)
+
+---
+
+## Week 2: October 8-14, 2025
+
+### October 12, 2025 - M1 Complete: Backend Foundation
+
+**Time spent**: ~4 hours
+
+**What happened:**
+
+- Completed Steps 7-8 of M1 (Express app setup + server entry point)
+- Created Express application with complete middleware chain
+- Built server entry point with graceful shutdown
+- Installed and configured MongoDB locally
+- Successfully tested all health endpoints
+
+**What was built:**
+
+**Step 7: Express App Configuration (`src/app.ts`)**
+
+- Middleware chain in correct order:
+  1. `express-async-errors` (must be first!)
+  2. Security: `helmet`, `cors`
+  3. Body parsing: `express.json()`, `express.urlencoded()`
+  4. Cookie parsing: `cookie-parser()`
+  5. Request logging: `pino-http` (with `/health` exclusion)
+  6. Routes: health router mounted at `/health` and `/api/v1`
+  7. 404 handler: `notFoundHandler`
+  8. Error handler: `errorHandler` (must be last!)
+
+**Step 8: Server Entry Point (`src/server.ts`)**
+
+- Database connection before server start
+- HTTP server startup on port 3001
+- Graceful shutdown handlers (SIGTERM, SIGINT)
+- Error handlers (uncaught exceptions, unhandled rejections)
+- Server error handling (EADDRINUSE for port conflicts)
+- 30-second timeout for forced shutdown
+
+**Technical insights:**
+
+1. **Middleware Order Matters**:
+   - `express-async-errors` must be imported first to catch async errors
+   - Error handler must be last middleware
+   - Routes must come after body parsers
+
+2. **Graceful Shutdown Pattern**:
+   - Stop accepting new connections (`server.close()`)
+   - Wait for in-flight requests to finish
+   - Close database connections
+   - Set timeout to force exit if hanging
+   - Handle multiple shutdown signals (prevent double shutdown)
+
+3. **Fail-Fast Principle**:
+   - Connect to database before starting HTTP server
+   - If database is down, don't accept requests
+   - Clear error messages for common failures (port in use, database unreachable)
+
+**Challenges encountered:**
+
+1. **TypeScript Error: `import.meta.url` not supported**
+   - Initial code checked `if (import.meta.url === \`file://\${process.argv[1]}\`)`
+   - Error: Module option doesn't support `import.meta`
+   - Solution: Removed conditional, just call `startServer()` directly
+   - Learning: Keep entry points simple, no fancy checks needed
+
+2. **MongoDB Not Installed**
+   - Server tried to start but MongoDB wasn't running
+   - Error: `ECONNREFUSED 127.0.0.1:27017`
+   - Solution: Installed with `brew install mongodb-community@7.0`
+   - Started with `brew services start mongodb-community@7.0`
+   - Learning: Document prerequisites clearly in README
+
+**Testing results:**
+
+```bash
+# ✅ Simple health check
+GET http://localhost:3001/health
+Response: {"status":"ok"}
+
+# ✅ Detailed health check
+GET http://localhost:3001/api/v1/health
+Response: {
+  "status": "ok",
+  "timestamp": "2025-10-12T06:03:08.585Z",
+  "uptime": 8.7099575,
+  "database": "connected"
+}
+
+# ✅ 404 handling
+GET http://localhost:3001/nonexistent
+Response: {
+  "message": "Route GET /nonexistent not found",
+  "code": "NOT_FOUND"
+}
+
+# ✅ Graceful shutdown
+SIGINT sent → Server stopped gracefully
+```
+
+**Aha! moments:**
+
+1. **Express Middleware Magic**:
+   - Third-party middleware (helmet, cors) implicitly call `next()`
+   - Route handlers that send responses implicitly end the chain
+   - Only need explicit `next()` for custom middleware or error forwarding
+
+2. **Health Check Mounting**:
+   - `router.get('/')` becomes `GET /health` when mounted at `/health`
+   - Same router mounted at two places gives two endpoints
+   - Paths are relative to mount point
+
+3. **Graceful Shutdown is Critical**:
+   - Production deployments send SIGTERM (Kubernetes, Docker)
+   - Developer Ctrl+C sends SIGINT
+   - Both need handling for clean shutdown
+   - Without it: data corruption, connection leaks, failed requests
+
+**What's next:**
+
+- **M1 COMPLETE!** 🎉
+- Push code to GitHub
+- Update documentation
+- Begin M2: API Development (authentication, alerts CRUD)
+
+**Metrics:**
+
+- **Files created**: 8 (config, utils, middleware, routes, app, server)
+- **Lines of code**: ~700 lines
+- **Dependencies added**: 10 (Express, Mongoose, Pino, Helmet, etc.)
+- **Test coverage**: Manual integration tests passing
+- **Build time**: ~2 seconds (TypeScript compilation)
 
 ---
 
@@ -368,4 +519,4 @@ git log --oneline --graph --all        # Visual commit history
 
 ---
 
-_Last updated: October 1, 2025_
+_Last updated: October 12, 2025_
