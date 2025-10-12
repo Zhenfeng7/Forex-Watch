@@ -213,15 +213,16 @@ Development-ready local setup with production-oriented architecture.
 - [x] Turbo build orchestration
 - [x] Documentation and environment setup
 
-### 🔄 M1 - Backend Skeleton (Next)
+### ✅ M1 - Backend Foundation
 
-- [ ] Express application setup
-- [ ] Health check endpoints
-- [ ] Pino logging configuration
-- [ ] Error handling middleware
-- [ ] Configuration management
-- [ ] Basic testing setup
-- [ ] Dockerfile
+- [x] Express application setup with middleware chain
+- [x] Health check endpoints (/health, /api/v1/health)
+- [x] Pino logging configuration with pretty-print
+- [x] Centralized error handling middleware
+- [x] Configuration management with Zod validation
+- [x] MongoDB connection with graceful shutdown
+- [x] Server entry point with signal handlers
+- [ ] Dockerfile (planned for M7)
 
 ### 📅 Upcoming Milestones
 
@@ -231,6 +232,39 @@ Development-ready local setup with production-oriented architecture.
 - **M5**: Frontend (React app, auth flows, alerts UI)
 - **M6**: Hardening (Security headers, logging, comprehensive testing)
 - **M7**: Deployment (Infrastructure, CI/CD, production deployment)
+
+## 🎁 Reusable Boilerplate
+
+This project includes a production-ready Express.js + TypeScript boilerplate that can be extracted for other projects!
+
+### Quick Start
+
+Create a new API project from this boilerplate:
+
+```bash
+./scripts/create-boilerplate.sh my-new-api
+cd my-new-api
+npm install
+cp .env.example .env
+npm run dev
+```
+
+### What's Included
+
+- ✅ TypeScript configuration
+- ✅ Environment validation with Zod
+- ✅ Structured logging (Pino)
+- ✅ Centralized error handling
+- ✅ MongoDB with Mongoose
+- ✅ Security middleware (Helmet, CORS)
+- ✅ Graceful shutdown
+- ✅ Health check endpoints
+
+### Documentation
+
+See [Boilerplate Guide](./docs/boilerplate-guide.md) for detailed instructions on extracting and customizing the infrastructure for your own projects.
+
+---
 
 ## 🤝 Contributing
 
