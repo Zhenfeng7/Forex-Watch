@@ -444,6 +444,138 @@ SIGINT sent → Server stopped gracefully
 - **Test coverage**: Manual integration tests passing
 - **Build time**: ~2 seconds (TypeScript compilation)
 
+### October 15, 2025 - M2 Step 1: User Model
+
+**Time spent**: ~1 hour
+
+**What happened:**
+
+- Created the foundational User model for authentication
+- Implemented password hashing with bcrypt
+- Added security best practices (select: false, toJSON sanitization)
+- Set up instance methods for password comparison
+
+**What was built:**
+
+**User Model (`src/models/User.ts`)**
+
+**Core features:**
+
+1. **TypeScript Interface (IUser)**:
+   - Extends Mongoose `Document` for type safety
+   - Defines all user fields: email, password, name, plan
+   - Includes instance method signatures
+
+2. **Mongoose Schema**:
+   - Email: unique, lowercase, trimmed, validated with regex
+   - Password: min 8 chars, `select: false` (security)
+   - Name: 2-50 chars, trimmed
+   - Plan: enum ['free', 'basic', 'premium'], default 'free'
+   - Timestamps: automatic createdAt/updatedAt
+
+3. **Email Index**:
+   - Unique index on email field
+   - Enables fast login queries (O(log n))
+   - Enforces one email per user at database level
+
+4. **Pre-save Hook (Password Hashing)**:
+   - Automatically hashes password before saving
+   - Only runs if password is new or modified (`isModified` check)
+   - Uses bcrypt with cost factor 10 (balances security/performance)
+   - Prevents re-hashing already-hashed passwords
+
+5. **Instance Methods**:
+   - `comparePassword()`: Verifies password during login
+   - `toJSON()`: Removes sensitive fields (password, \_\_v) from JSON responses
+
+**Technical insights:**
+
+1. **Why `select: false` on password?**
+   - Default queries won't return password field
+   - Must explicitly request: `.select('+password')`
+   - Defense-in-depth: even if query is compromised, no password leaked
+   - Used during login: `User.findOne({ email }).select('+password')`
+
+2. **Why check `isModified('password')`?**
+   - Prevents re-hashing an already-hashed password
+   - Scenario: User updates name but not password
+   - Without check: `$2b$10$...` would get hashed again → broken password
+   - With check: Only hash when password actually changed
+
+3. **bcrypt cost factor of 10:**
+   - Higher = more secure but slower
+   - 10 is industry standard (balance)
+   - Takes ~100ms to hash (acceptable for login/register)
+   - Attacker needs ~100ms per guess (brute force impractical)
+
+4. **Why `toJSON()` method?**
+   - `res.json(user)` automatically calls `toJSON()`
+   - Removes sensitive fields without manual filtering
+   - Centralized: change once, affects all responses
+   - Can't accidentally leak password in API response
+
+5. **Email lowercase normalization:**
+   - `User@Example.com` === `user@example.com`
+   - Prevents duplicate accounts with case variations
+   - Unique index works correctly (case-insensitive matching)
+
+**Design decisions:**
+
+1. **Why instance methods instead of static methods?**
+   - `user.comparePassword()` vs `User.comparePassword(user, password)`
+   - Instance methods are more intuitive (OOP pattern)
+   - `this` context automatically available
+   - Can be mocked easily in tests
+
+2. **Why bcrypt over Argon2?**
+   - bcrypt: battle-tested, wide ecosystem support
+   - Argon2: newer, slightly more secure, less mature tooling
+   - Decision: Go with proven solution (bcrypt)
+   - Can migrate to Argon2 later if needed
+
+3. **Why Mongoose over raw MongoDB?**
+   - Schema validation prevents bad data
+   - Middleware (pre-save hooks) for automatic tasks
+   - TypeScript integration (type-safe models)
+   - Helper methods built-in
+
+**Security considerations:**
+
+- ✅ Passwords always hashed (bcrypt with salt)
+- ✅ Password never returned in API responses (`select: false` + `toJSON`)
+- ✅ Email normalized (prevents duplicate accounts)
+- ✅ Validation at schema level (fail early)
+- ✅ Type safety (TypeScript catches errors at compile time)
+
+**Integration points:**
+
+This User model will be used by:
+
+- Registration controller: `new User({ email, password, name })`
+- Login controller: `User.findOne({ email }).select('+password')`
+- Authentication middleware: `User.findById(userId)`
+- Profile endpoints: `User.findById(userId).select('-password')`
+
+**What's next:**
+
+- Step 2: Authentication Service (JWT generation/verification, token utilities)
+- Step 3: Authentication Controller (register, login, refresh, logout)
+- Step 4: Authentication Routes (mount controller to Express)
+- Step 5: Authentication Middleware (protect routes)
+
+**Interview talking points:**
+
+- "I used bcrypt for password hashing because it's specifically designed for passwords - it's intentionally slow to prevent brute force attacks, and it handles salting automatically."
+- "The pre-save hook ensures passwords are always hashed before saving to the database. There's no way to accidentally save a plain-text password."
+- "I use `select: false` on the password field so it's not included in queries by default. This is defense-in-depth - even if there's a security flaw elsewhere, passwords won't leak."
+- "The email field has a unique index which serves two purposes: it prevents duplicate accounts and makes login queries extremely fast."
+
+**Time breakdown:**
+
+- Planning and explanation: 0.5 hours
+- Implementation: 0.3 hours
+- Documentation: 0.2 hours
+
 ---
 
 ## Interview Preparation Notes
