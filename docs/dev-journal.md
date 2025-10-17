@@ -578,6 +578,339 @@ This User model will be used by:
 
 ---
 
+### October 15, 2025 - M2 Step 2: Authentication Service
+
+**Time spent**: ~0.5 hours
+
+**What happened:**
+
+- Created centralized authentication service for JWT operations
+- Implemented token generation (access + refresh)
+- Added token verification with proper error handling
+- Set up TypeScript interfaces for type safety
+
+**What was built:**
+
+**Authentication Service (`src/services/authService.ts`)**
+
+**Core features:**
+
+1. **TokenPayload Interface**:
+   - Defines JWT payload structure (userId, type, iat, exp)
+   - Type safety for token operations
+   - Used across controllers and middleware
+
+2. **TokenPair Interface**:
+   - Represents access + refresh token pair
+   - Returned after login/registration
+
+3. **AuthService Class**:
+   - Private constants: `ACCESS_TOKEN_EXPIRY = '15m'`, `REFRESH_TOKEN_EXPIRY = '7d'`
+   - Three public methods: `generateTokens()`, `verifyAccessToken()`, `verifyRefreshToken()`
+   - Singleton instance exported as `authService`
+
+4. **generateTokens(userId)**:
+   - Creates both access and refresh tokens
+   - Includes `type` field in payload ('access' or 'refresh')
+   - Uses `jsonwebtoken` library with config.jwtSecret
+   - Returns TokenPair object
+
+5. **verifyAccessToken(token)**:
+   - Validates JWT signature
+   - Checks expiration
+   - Ensures token type is 'access' (prevents refresh token misuse)
+   - Throws UnauthorizedError with specific messages
+   - Handles: TokenExpiredError, JsonWebTokenError
+
+6. **verifyRefreshToken(token)**:
+   - Same validation as access token
+   - Ensures token type is 'refresh' (prevents access token misuse)
+   - Different error message for expiry: "Please login again"
+   - Used by refresh endpoint
+
+**Technical insights:**
+
+1. **Why two tokens (access + refresh)?**
+   - Security: Short-lived access token (15 min) limits damage if stolen
+   - UX: Long-lived refresh token (7 days) keeps user logged in
+   - Balance: Access token frequently renewed, refresh token rarely used
+   - Pattern: Access token in memory, refresh token in secure storage
+
+2. **Why include 'type' in token payload?**
+   - Prevents misuse: Can't use refresh token as access token
+   - Defense-in-depth: Even if client sends wrong token, server rejects it
+   - Example: `if (payload.type !== 'access') throw new UnauthorizedError()`
+
+3. **JWT error handling strategy:**
+   - `TokenExpiredError`: Tell client to refresh (expected behavior)
+   - `JsonWebTokenError`: Token is invalid/tampered (security issue)
+   - Different messages for access vs refresh expiry (UX: auto-refresh vs re-login)
+
+4. **Why class-based service?**
+   - Easy to mock in tests: `jest.spyOn(authService, 'verifyAccessToken')`
+   - Can add state later (token rotation cache, blacklist)
+   - Singleton pattern: consistent configuration across app
+   - Alternative: separate functions, but less testable
+
+5. **JWT structure breakdown:**
+   ```
+   Header: { "alg": "HS256", "typ": "JWT" }
+   Payload: { "userId": "...", "type": "access", "iat": ..., "exp": ... }
+   Signature: HMAC-SHA256(header + payload, JWT_SECRET)
+   ```
+
+   - Signature prevents tampering (can't change userId without knowing secret)
+   - Expiration (`exp`) checked by jwt.verify()
+   - Issued at (`iat`) added automatically
+
+**Design decisions:**
+
+1. **Why separate verify functions?**
+   - Could use: `verifyToken(token, expectedType)`
+   - Chose: `verifyAccessToken()` and `verifyRefreshToken()`
+   - Benefits: More explicit, different error messages, better type safety
+
+2. **Token expiration times:**
+   - Access: 15 min (industry standard for API tokens)
+   - Refresh: 7 days (balance security with UX)
+   - Could be configurable via env vars (future enhancement)
+
+3. **Error message strategy:**
+   - Access expired: "Access token expired" → Client auto-refreshes
+   - Refresh expired: "Please login again" → Client redirects to login
+   - Generic: "Token verification failed" → Prevents info leakage
+
+**Security considerations:**
+
+- ✅ JWT_SECRET validated at startup (Zod schema)
+- ✅ Token type validation (prevents cross-use)
+- ✅ Signature verification (prevents tampering)
+- ✅ Expiration enforcement (limits replay attacks)
+- ✅ Specific error messages (helps debugging without leaking security details)
+
+**Integration points:**
+
+This service will be used by:
+
+- **Auth Controller**:
+  - `generateTokens()` after successful login/registration
+  - `verifyRefreshToken()` in refresh endpoint
+- **Authenticate Middleware**:
+  - `verifyAccessToken()` to protect routes
+- **Future logout**:
+  - Could add token blacklist (M3)
+
+**What's next:**
+
+- Step 3: Authentication Controller (register, login, refresh, logout handlers)
+- Step 4: Authentication Routes (mount controller to Express)
+- Step 5: Authentication Middleware (protect routes with JWT verification)
+
+**Interview talking points:**
+
+- "I implemented a dual-token system: short-lived access tokens minimize exposure if stolen, while long-lived refresh tokens maintain user sessions without constant re-authentication."
+- "The service includes token type validation - you can't use a refresh token as an access token. This is defense-in-depth: even if the client sends the wrong token, the server catches it."
+- "I used a class-based service with a singleton instance because it's easier to mock in tests and allows for future state management like token blacklisting."
+- "Different error messages for access vs refresh token expiry improve UX: expired access tokens trigger automatic refresh, but expired refresh tokens require re-login."
+
+**Time breakdown:**
+
+- Implementation: 0.3 hours
+- Documentation: 0.2 hours
+
+---
+
+### October 15, 2025 - M2 Step 3: Authentication Controller
+
+**Time spent**: ~1 hour
+
+**What happened:**
+
+- Created authentication controller with 5 endpoints
+- Implemented register, login, refresh, logout, and getCurrentUser functions
+- Added Zod validation for request bodies
+- Implemented security best practices (email enumeration prevention)
+
+**What was built:**
+
+**Authentication Controller (`src/controllers/authController.ts`)**
+
+**Core features:**
+
+1. **AuthRequest Interface**:
+   - Extends Express Request
+   - Adds optional `userId` field (set by auth middleware)
+   - Type safety for protected routes
+
+2. **register() - POST /api/v1/auth/register**:
+   - Validates input with `CreateUserSchema` (Zod)
+   - Checks for duplicate email
+   - Creates user (password auto-hashed by model)
+   - Generates JWT tokens (authService)
+   - Returns 201 with user + tokens
+   - Handles MongoDB duplicate key error (code 11000)
+   - Logs registration event
+
+3. **login() - POST /api/v1/auth/login**:
+   - Validates input with `LoginSchema` (Zod)
+   - Finds user with `.select('+password')`
+   - Verifies password with `user.comparePassword()`
+   - Returns same error for wrong email/password (prevents enumeration)
+   - Generates tokens
+   - Returns 200 with user + tokens
+   - Logs login event
+
+4. **refresh() - POST /api/v1/auth/refresh**:
+   - Extracts refresh token from body
+   - Verifies with `authService.verifyRefreshToken()`
+   - Checks if user still exists
+   - Generates new token pair
+   - Returns 200 with new tokens
+   - Logs refresh event
+
+5. **logout() - POST /api/v1/auth/logout**:
+   - Simple endpoint (JWT is stateless)
+   - Logs logout event
+   - Returns success message
+   - Note: Client deletes tokens locally
+   - Future: Add token blacklist (M3)
+
+6. **getCurrentUser() - GET /api/v1/auth/me**:
+   - Gets userId from request (set by middleware)
+   - Finds user by ID
+   - Returns user data (no tokens)
+   - Protected route (requires auth)
+
+**Technical insights:**
+
+1. **Email enumeration prevention:**
+   - Returns same error for wrong email and wrong password
+   - Example: "Invalid credentials" (not "Email not found" or "Wrong password")
+   - Prevents attackers from discovering registered emails
+   - OWASP best practice
+
+2. **Why validate before DB query?**
+
+   ```typescript
+   const result = CreateUserSchema.safeParse(req.body);
+   if (!result.success) throw ValidationError;
+   ```
+
+   - Fails fast (don't hit DB with invalid data)
+   - Consistent validation (same schema as frontend)
+   - Better error messages (Zod provides field-level errors)
+
+3. **Duplicate email handling:**
+   - Check before create: `const existing = await User.findOne({ email })`
+   - Catch MongoDB error: `if (error.code === 11000) throw ConflictError`
+   - Why both? Race condition safety (two simultaneous requests)
+
+4. **Password field selection:**
+
+   ```typescript
+   const user = await User.findOne({ email }).select('+password');
+   ```
+
+   - Password has `select: false` in schema
+   - Must explicitly include with `+password`
+   - Only needed during login (not in other queries)
+
+5. **Logging strategy:**
+   - Log userId for audit trail
+   - Don't log sensitive data (passwords, tokens)
+   - Structured logging: `logger.info({ userId }, 'message')`
+   - Helps debugging and security monitoring
+
+6. **Error throwing in controllers:**
+   - Controllers throw errors, middleware catches them
+   - `express-async-errors` automatically catches async errors
+   - No need for try/catch in every function
+   - Example: `throw new ConflictError('Email exists')`
+
+**Design decisions:**
+
+1. **Why safeParse instead of parse?**
+
+   ```typescript
+   // Option A: parse (throws)
+   const data = CreateUserSchema.parse(req.body); // Throws ZodError
+
+   // Option B: safeParse (returns result)
+   const result = CreateUserSchema.safeParse(req.body);
+   if (!result.success) throw ValidationError(result.error);
+   ```
+
+   - Chosen: safeParse for control over error format
+   - Can wrap Zod error in our ValidationError class
+   - Consistent error responses
+
+2. **Why check user exists in refresh?**
+   - User might be deleted while token is still valid
+   - Prevents generating tokens for non-existent users
+   - Edge case but important for security
+
+3. **Logout implementation:**
+   - Current: No server-side action (JWT is stateless)
+   - Client deletes tokens from localStorage/Keychain
+   - Future: Add token blacklist in Redis (M3)
+   - Trade-off: Simplicity now vs instant revocation later
+
+4. **Response format consistency:**
+   ```typescript
+   res.json({
+     message: 'Operation successful',
+     data: {
+       /* payload */
+     },
+   });
+   ```
+
+   - All endpoints follow same structure
+   - Frontend knows what to expect
+   - Easy to document
+
+**Security considerations:**
+
+- ✅ Email enumeration prevention (same error for wrong email/password)
+- ✅ Zod validation (prevents injection attacks)
+- ✅ Password never returned (toJSON removes it)
+- ✅ Duplicate email handling (prevents race conditions)
+- ✅ User existence check in refresh (prevents orphaned tokens)
+- ✅ Structured logging (audit trail without sensitive data)
+
+**Integration points:**
+
+This controller integrates:
+
+- **User model** (Step 1): Create user, find user, compare password
+- **authService** (Step 2): Generate tokens, verify refresh token
+- **Shared schemas**: CreateUserSchema, LoginSchema (Zod validation)
+- **Custom errors**: ValidationError, ConflictError, UnauthorizedError, NotFoundError
+- **Logger**: Structured logging for audit trail
+
+**What's next:**
+
+- Step 4: Authentication Routes (mount controller to Express router)
+- Step 5: Authentication Middleware (protect routes with JWT verification)
+- Step 6: Alert Model (database schema for forex alerts)
+- Step 7: Alert Controller (CRUD operations)
+- Step 8: Alert Routes (complete API)
+
+**Interview talking points:**
+
+- "I prevent email enumeration by returning 'Invalid credentials' for both wrong email and wrong password. This is an OWASP best practice that prevents attackers from discovering which emails are registered."
+- "I use Zod schemas from the shared package for validation, ensuring the backend validates exactly the same way as the frontend. This single source of truth prevents inconsistencies."
+- "The duplicate email check has both a pre-check and error handling because of race conditions. If two requests try to register the same email simultaneously, the unique index will catch it and throw code 11000."
+- "Controllers throw errors that are caught by the global error middleware. This keeps the controller code clean and ensures consistent error formatting across the API."
+
+**Time breakdown:**
+
+- Implementation: 0.5 hours
+- Testing (manual review): 0.2 hours
+- Documentation: 0.3 hours
+
+---
+
 ## Interview Preparation Notes
 
 ### Story arcs developing:
