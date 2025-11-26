@@ -66,6 +66,41 @@
 
 ---
 
+### October 15, 2025 - M3.1 Rate Provider & Scheduler
+
+**Time spent**: ~4 hours
+
+**What happened:**
+
+- Swapped rate provider integration to Freecurrencyapi with env validation, timeout/retry knobs, and batching.
+- Added in-memory latest-rate store with stale flag, background fetcher (30m interval, JST 07-19 window), and read-only `/api/v1/rates/latest` endpoint.
+- Added mock provider support for local runs without hitting external APIs.
+- Wrote unit tests for provider clients, store, and selector using fetch mocks (no real network).
+
+**Key decisions:**
+
+1. Fetch cadence: 30 minutes, only during JST 07:00–19:00 to stay under free tier limits.
+2. Batch by base currency to minimize API calls and respect quota.
+3. If a fetch fails, reuse last known rate but mark it `stale` so UI can warn users.
+4. No on-demand provider hits: latest endpoint always serves cached data.
+
+**Technical insights:**
+
+- Treating bad JSON on error responses as provider errors avoids masking upstream issues.
+- Using global fetch mocks keeps tests fast and independent from provider availability/API keys.
+- Cache TTL should be >= fetch interval; we defaulted to 45 minutes.
+
+**What's next:**
+
+- M3.2: add cache abstraction (TTL + stale-while-revalidate) if needed beyond current store.
+- Wire alert runner to consume cached rates and enqueue notifications (no live calls per request).
+
+**Testing:**
+
+- `npm test` (apps/backend) — all rate client/store tests passing.
+
+---
+
 ### October 3, 2025 - M1 Backend Skeleton (In Progress)
 
 **Time spent so far**: ~3.5 hours
@@ -653,6 +688,7 @@ This User model will be used by:
    - Alternative: separate functions, but less testable
 
 5. **JWT structure breakdown:**
+
    ```
    Header: { "alg": "HS256", "typ": "JWT" }
    Payload: { "userId": "...", "type": "access", "iat": ..., "exp": ... }
@@ -856,6 +892,7 @@ This service will be used by:
    - Trade-off: Simplicity now vs instant revocation later
 
 4. **Response format consistency:**
+
    ```typescript
    res.json({
      message: 'Operation successful',
@@ -908,6 +945,237 @@ This controller integrates:
 - Implementation: 0.5 hours
 - Testing (manual review): 0.2 hours
 - Documentation: 0.3 hours
+
+---
+
+### October 15, 2025 - M2 Steps 4 & 5: Authentication Routes + Middleware
+
+**Time spent**: ~1 hour
+
+**What happened:**
+
+- Created authentication middleware to verify JWT tokens
+- Built authentication router with 5 endpoints
+- Mounted auth routes in Express app
+- Completed full authentication API
+
+**What was built:**
+
+**1. Authentication Middleware (`src/middleware/authenticate.ts`)**
+
+**Purpose:**
+
+- Verifies JWT access tokens on protected routes
+- Extracts userId from token and attaches to request
+- Runs before controllers on protected endpoints
+
+**Flow:**
+
+1. Extract token from `Authorization: Bearer <token>` header
+2. Validate header format (must be "Bearer <token>")
+3. Verify token using `authService.verifyAccessToken()`
+4. Attach `userId` to `req.userId` for controllers
+5. Call `next()` to continue to controller
+
+**Error handling:**
+
+- Throws `UnauthorizedError` if:
+  - No Authorization header
+  - Invalid header format (not "Bearer <token>")
+  - Token is invalid/expired (caught from authService)
+- Errors passed to error handler via `next(error)`
+
+**Usage:**
+
+```typescript
+router.post('/logout', authenticate, logout);
+router.get('/me', authenticate, getCurrentUser);
+```
+
+**2. Authentication Routes (`src/routes/auth.ts`)**
+
+**Structure:**
+
+- Public routes (3): register, login, refresh
+- Protected routes (2): logout, me
+- Base path: `/api/v1/auth`
+
+**Routes defined:**
+
+1. **POST /register** (public)
+   - Handler: `register` controller
+   - No middleware
+   - Creates new user account
+
+2. **POST /login** (public)
+   - Handler: `login` controller
+   - No middleware
+   - Authenticates existing user
+
+3. **POST /refresh** (public)
+   - Handler: `refresh` controller
+   - No middleware
+   - Generates new access token
+
+4. **POST /logout** (protected)
+   - Middleware: `authenticate`
+   - Handler: `logout` controller
+   - Logs out authenticated user
+
+5. **GET /me** (protected)
+   - Middleware: `authenticate`
+   - Handler: `getCurrentUser` controller
+   - Returns current user profile
+
+**3. App.ts Update**
+
+**Changes:**
+
+- Imported `authRouter`
+- Mounted at `/api/v1/auth`
+- Routes now accessible via HTTP
+
+**Complete route list:**
+
+- `POST /api/v1/auth/register`
+- `POST /api/v1/auth/login`
+- `POST /api/v1/auth/refresh`
+- `POST /api/v1/auth/logout` (requires auth)
+- `GET /api/v1/auth/me` (requires auth)
+
+**Technical insights:**
+
+1. **Middleware order matters:**
+
+   ```typescript
+   router.post('/logout', authenticate, logout);
+   //                     ↑ runs first  ↑ runs second
+   ```
+
+   - Middleware executes left to right
+   - `authenticate` must run before `logout` to set `req.userId`
+   - Controller receives authenticated request
+
+2. **Why refresh is public:**
+   - Access token might be expired (that's why refreshing)
+   - Can't use `authenticate` middleware on expired token
+   - Refresh token validated inside controller instead
+
+3. **Authorization header format:**
+
+   ```
+   Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
+   ```
+
+   - Industry standard format
+   - `Bearer` indicates token type
+   - Space separates scheme from token
+   - Split on space to extract token
+
+4. **Express Router benefits:**
+   - Modular: Each feature has own router file
+   - Maintainable: Easy to find related routes
+   - Testable: Can test router independently
+   - Scalable: Add more routers without cluttering app
+
+5. **Mounting strategy:**
+
+   ```typescript
+   app.use('/api/v1/auth', authRouter);
+   ```
+
+   - Base path set once in app.ts
+   - Routes defined relative to base: `router.post('/login', ...)`
+   - Final URL: `/api/v1/auth/login`
+   - Easy to change base path in one place
+
+6. **Error flow in middleware:**
+   ```typescript
+   try {
+     // Verify token
+   } catch (error) {
+     next(error); // Pass to error handler
+   }
+   ```
+
+   - Don't send response in middleware
+   - Pass error to centralized error handler
+   - Consistent error formatting
+
+**Design decisions:**
+
+1. **Why separate authenticate middleware?**
+   - Reusable across multiple routes
+   - Centralized JWT verification logic
+   - Easy to modify (e.g., add rate limiting)
+   - Can be tested independently
+
+2. **Why \_res prefix?**
+
+   ```typescript
+   async function authenticate(req, _res, next);
+   ```
+
+   - Express requires 3 params for middleware
+   - We don't use `res` in authenticate
+   - Prefix with `_` to satisfy ESLint
+
+3. **HTTP methods chosen:**
+   - POST: register, login, refresh, logout (create/action)
+   - GET: me (retrieve data)
+   - Follows REST conventions
+
+4. **Route documentation:**
+   - JSDoc comments on each route
+   - Explains body, headers, response
+   - Helps with API documentation generation
+
+**Security considerations:**
+
+- ✅ Authorization header validation (format check)
+- ✅ Token verification before processing request
+- ✅ Protected routes clearly separated from public
+- ✅ No token in URL (only in header for security)
+- ✅ Middleware rejects invalid tokens early
+- ✅ Error messages don't leak sensitive info
+
+**Integration points:**
+
+Complete authentication flow:
+
+1. **Client** → POST /api/v1/auth/login
+2. **app.ts** → Middleware chain (parsing, logging)
+3. **authRouter** → Matches `/login` route
+4. **login controller** → Verifies credentials, generates tokens
+5. **Client** → Stores tokens
+6. **Client** → GET /api/v1/auth/me with `Authorization: Bearer <token>`
+7. **authRouter** → Matches `/me` route
+8. **authenticate middleware** → Verifies token, sets `req.userId`
+9. **getCurrentUser controller** → Uses `req.userId` to fetch user
+10. **Client** → Receives user data
+
+**What's next:**
+
+M2 Phase 1 (Authentication) is COMPLETE! ✅
+
+Remaining M2 steps:
+
+- Step 6: Alert Model (database schema for forex alerts)
+- Step 7: Alert Controller (CRUD operations for alerts)
+- Step 8: Alert Routes (mount alert endpoints)
+
+**Interview talking points:**
+
+- "I use Express Router to keep routes modular and organized. Each feature like auth has its own router file with routes defined relative to a base path. This makes it easy to find, test, and maintain routes."
+- "The authenticate middleware runs before protected route controllers. It extracts the JWT from the Authorization header, verifies it with the authService, and attaches the userId to the request. If the token is invalid, it throws an error and the controller never runs."
+- "The refresh endpoint is intentionally public because the access token might be expired - that's the whole point of refreshing. The refresh token is validated inside the controller instead of using the standard authentication middleware."
+- "Middleware order is critical in Express. I place authenticate before the controller function so the token is verified first. If verification fails, the controller never executes."
+
+**Time breakdown:**
+
+- Implementation: 0.5 hours
+- Testing (type-check): 0.1 hours
+- Documentation: 0.4 hours
 
 ---
 

@@ -97,7 +97,7 @@ Copy `env.example` to `.env` and configure:
 - **Database**: `MONGODB_URI` (local: `mongodb://localhost:27017/forex-watch-dev`)
 - **JWT Secrets**: Generate secure 32+ character strings
 - **Email Provider**: Choose 'mock', 'smtp', or 'ses' and configure accordingly
-- **Rate Provider**: Choose 'mock', 'exchangerate-api', or 'currencylayer'
+- **Rate Provider**: Choose 'mock', 'exchangerate-api', 'freecurrencyapi', or 'currencylayer'. For Freecurrencyapi set `FREECURRENCYAPI_KEY` (optional `FREECURRENCYAPI_BASE_URL`). Tune client behavior with `RATE_PROVIDER_TIMEOUT_MS` and `RATE_PROVIDER_RETRY_COUNT`. Control schedule with `RATE_PAIRS`, `RATE_FETCH_INTERVAL_MINUTES`, `RATE_ACTIVE_START_HOUR`, `RATE_ACTIVE_END_HOUR`, `RATE_ACTIVE_TIMEZONE`, and cache freshness with `RATE_CACHE_TTL_MS`.
 
 ## 📝 Available Scripts
 

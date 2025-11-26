@@ -172,57 +172,119 @@ export const NotificationPayloadSchema = z.object({
 // ENVIRONMENT SCHEMAS
 // =============================================================================
 
-export const EnvSchema = z.object({
-  NODE_ENV: z
-    .enum(['development', 'production', 'test'])
-    .default('development'),
-  PORT: z.string().regex(/^\d+$/).transform(Number).default('3001'),
-  MONGODB_URI: z.string().url('Invalid MongoDB URI'),
-  FRONTEND_URL: z.string().url('Invalid frontend URL'),
+export const EnvSchema = z
+  .object({
+    NODE_ENV: z
+      .enum(['development', 'production', 'test'])
+      .default('development'),
+    PORT: z.string().regex(/^\d+$/).transform(Number).default('3001'),
+    MONGODB_URI: z.string().url('Invalid MongoDB URI'),
+    FRONTEND_URL: z.string().url('Invalid frontend URL'),
 
-  // JWT
-  JWT_SECRET: z.string().min(32, 'JWT secret must be at least 32 characters'),
-  JWT_REFRESH_SECRET: z
-    .string()
-    .min(32, 'JWT refresh secret must be at least 32 characters'),
-  JWT_ACCESS_EXPIRES_IN: z.string().default('15m'),
-  JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
+    // JWT
+    JWT_SECRET: z.string().min(32, 'JWT secret must be at least 32 characters'),
+    JWT_REFRESH_SECRET: z
+      .string()
+      .min(32, 'JWT refresh secret must be at least 32 characters'),
+    JWT_ACCESS_EXPIRES_IN: z.string().default('15m'),
+    JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
 
-  // Security
-  BCRYPT_ROUNDS: z.string().regex(/^\d+$/).transform(Number).default('12'),
-  RATE_LIMIT_WINDOW_MS: z
-    .string()
-    .regex(/^\d+$/)
-    .transform(Number)
-    .default('900000'),
-  RATE_LIMIT_MAX_REQUESTS: z
-    .string()
-    .regex(/^\d+$/)
-    .transform(Number)
-    .default('5'),
+    // Security
+    BCRYPT_ROUNDS: z.string().regex(/^\d+$/).transform(Number).default('12'),
+    RATE_LIMIT_WINDOW_MS: z
+      .string()
+      .regex(/^\d+$/)
+      .transform(Number)
+      .default('900000'),
+    RATE_LIMIT_MAX_REQUESTS: z
+      .string()
+      .regex(/^\d+$/)
+      .transform(Number)
+      .default('5'),
 
-  // Logging
-  LOG_LEVEL: z.string().default('info'),
+    // Logging
+    LOG_LEVEL: z.string().default('info'),
 
-  // Email
-  EMAIL_PROVIDER: z.enum(['mock', 'smtp', 'ses']).default('mock'),
-  SES_FROM_EMAIL: z.string().email().optional(),
-  SES_FROM_NAME: z.string().optional(),
-  AWS_REGION: z.string().optional(),
-  AWS_ACCESS_KEY_ID: z.string().optional(),
-  AWS_SECRET_ACCESS_KEY: z.string().optional(),
-  SMTP_HOST: z.string().optional(),
-  SMTP_PORT: z.string().regex(/^\d+$/).transform(Number).optional(),
-  SMTP_USER: z.string().optional(),
-  SMTP_PASS: z.string().optional(),
+    // Email
+    EMAIL_PROVIDER: z.enum(['mock', 'smtp', 'ses']).default('mock'),
+    SES_FROM_EMAIL: z.string().email().optional(),
+    SES_FROM_NAME: z.string().optional(),
+    AWS_REGION: z.string().optional(),
+    AWS_ACCESS_KEY_ID: z.string().optional(),
+    AWS_SECRET_ACCESS_KEY: z.string().optional(),
+    SMTP_HOST: z.string().optional(),
+    SMTP_PORT: z.string().regex(/^\d+$/).transform(Number).optional(),
+    SMTP_USER: z.string().optional(),
+    SMTP_PASS: z.string().optional(),
 
-  // Rate Provider
-  RATE_PROVIDER: z
-    .enum(['mock', 'exchangerate-api', 'currencylayer'])
-    .default('mock'),
-  EXCHANGERATE_API_KEY: z.string().optional(),
-  CURRENCYLAYER_API_KEY: z.string().optional(),
-});
+    // Rate Provider
+    RATE_PROVIDER: z
+      .enum(['mock', 'exchangerate-api', 'currencylayer', 'freecurrencyapi'])
+      .default('mock'),
+    EXCHANGERATE_API_KEY: z.string().optional(),
+    EXCHANGERATE_API_BASE_URL: z.string().url().optional(),
+    FREECURRENCYAPI_KEY: z.string().optional(),
+    FREECURRENCYAPI_BASE_URL: z.string().url().optional(),
+    RATE_PROVIDER_TIMEOUT_MS: z
+      .string()
+      .regex(/^\d+$/)
+      .transform(Number)
+      .default('5000'),
+    RATE_PROVIDER_RETRY_COUNT: z
+      .string()
+      .regex(/^\d+$/)
+      .transform(Number)
+      .default('1'),
+    CURRENCYLAYER_API_KEY: z.string().optional(),
+    RATE_PAIRS: z.string().default('USD:JPY'),
+    RATE_FETCH_INTERVAL_MINUTES: z
+      .string()
+      .regex(/^\d+$/)
+      .transform(Number)
+      .default('30'),
+    RATE_ACTIVE_START_HOUR: z
+      .string()
+      .regex(/^\d+$/)
+      .transform(Number)
+      .default('7'),
+    RATE_ACTIVE_END_HOUR: z
+      .string()
+      .regex(/^\d+$/)
+      .transform(Number)
+      .default('19'),
+    RATE_ACTIVE_TIMEZONE: z.string().default('Asia/Tokyo'),
+    RATE_CACHE_TTL_MS: z
+      .string()
+      .regex(/^\d+$/)
+      .transform(Number)
+      .default('2700000'), // 45 minutes
+  })
+  .superRefine((env, ctx) => {
+    if (env.RATE_PROVIDER === 'exchangerate-api' && !env.EXCHANGERATE_API_KEY) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          'EXCHANGERATE_API_KEY is required when RATE_PROVIDER=exchangerate-api',
+        path: ['EXCHANGERATE_API_KEY'],
+      });
+    }
+    if (env.RATE_PROVIDER === 'currencylayer' && !env.CURRENCYLAYER_API_KEY) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          'CURRENCYLAYER_API_KEY is required when RATE_PROVIDER=currencylayer',
+        path: ['CURRENCYLAYER_API_KEY'],
+      });
+    }
+    if (env.RATE_PROVIDER === 'freecurrencyapi' && !env.FREECURRENCYAPI_KEY) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          'FREECURRENCYAPI_KEY is required when RATE_PROVIDER=freecurrencyapi',
+        path: ['FREECURRENCYAPI_KEY'],
+      });
+    }
+  });
 
 // =============================================================================
 // TYPE EXPORTS

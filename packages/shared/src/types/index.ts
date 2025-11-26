@@ -26,7 +26,11 @@ export type Currency =
 
 export type AlertDirection = 'gte' | 'lte';
 export type UserPlan = 'free' | 'pro';
-export type RateProvider = 'mock' | 'exchangerate-api' | 'currencylayer';
+export type RateProvider =
+  | 'mock'
+  | 'exchangerate-api'
+  | 'currencylayer'
+  | 'freecurrencyapi';
 export type EmailProvider = 'mock' | 'smtp' | 'ses';
 
 // =============================================================================
@@ -132,7 +136,16 @@ export interface RateProviderConfig {
   provider: RateProvider;
   apiKey?: string;
   baseUrl?: string;
-  timeout?: number;
+  timeoutMs?: number;
+  retryCount?: number;
+  pairs: Array<{ base: Currency; quote: Currency }>;
+  fetchIntervalMinutes: number;
+  activeHours: {
+    startHour: number;
+    endHour: number;
+    timezone: string;
+  };
+  cacheTtlMs: number;
 }
 
 // =============================================================================

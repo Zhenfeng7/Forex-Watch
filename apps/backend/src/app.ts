@@ -15,6 +15,8 @@ import { config } from './config/index.js';
 import { logger } from './utils/logger.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 import healthRouter from './routes/health.js';
+import authRouter from './routes/auth.js';
+import ratesRouter from './routes/rates.js';
 
 /**
  * Create and configure Express application
@@ -63,8 +65,11 @@ export function createApp(): Express {
   app.use('/health', healthRouter); // GET /health (simple)
   app.use('/api/v1', healthRouter); // GET /api/v1/health (detailed)
 
+  // Authentication routes
+  app.use('/api/v1/auth', authRouter); // M2: Authentication
+  app.use('/api/v1/rates', ratesRouter); // Latest rates (read-only)
+
   // Future routes will go here:
-  // app.use('/api/v1/auth', authRouter);     // M2: Authentication
   // app.use('/api/v1/alerts', alertRouter);  // M3: Alerts
 
   // =============================================================================

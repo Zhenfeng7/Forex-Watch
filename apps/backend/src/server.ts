@@ -12,6 +12,7 @@ import { config } from './config/index.js';
 import { logger } from './utils/logger.js';
 import { connectDatabase, disconnectDatabase } from './config/database.js';
 import { app } from './app.js';
+import { startRateFetcher } from './jobs/rateFetcher.js';
 
 /**
  * Graceful shutdown handler
@@ -51,39 +52,10 @@ function setupErrorHandlers(): void {
 }
 
 /**
- * Setup signal handlers for graceful shutdown
- */
-function setupSignalHandlers(server: any): void {
-  let isShuttingDown = false;
-
-  const shutdown = async (signal: string) => {
-    if (isShuttingDown) {
-      logger.warn('Already shutting down, please wait...');
-      return;
-    }
-    isShuttingDown = true;
-
-    logger.info(`${signal} received, shutting down gracefully...`);
-
-    try {
-      await gracefulShutdown(server);
-      await disconnectDatabase();
-      logger.info('✅ Graceful shutdown complete');
-      process.exit(0);
-    } catch (error) {
-      logger.error({ error }, 'Error during shutdown');
-      process.exit(1);
-    }
-  };
-
-  process.on('SIGTERM', () => shutdown('SIGTERM'));
-  process.on('SIGINT', () => shutdown('SIGINT'));
-}
-
-/**
  * Start the server
  */
 async function startServer(): Promise<void> {
+  let stopRateFetcher: (() => void) | null = null;
   try {
     // Setup error handlers first
     setupErrorHandlers();
@@ -101,8 +73,28 @@ async function startServer(): Promise<void> {
       logger.info(`API Base URL: http://localhost:${config.port}/api/v1`);
     });
 
-    // Setup graceful shutdown handlers
-    setupSignalHandlers(server);
+    // Start background jobs
+    stopRateFetcher = startRateFetcher();
+
+    // Setup graceful shutdown handlers (stop jobs inside handler)
+    const shutdown = async (sig: string) => {
+      logger.info(`${sig} received, shutting down gracefully...`);
+      try {
+        if (stopRateFetcher) {
+          stopRateFetcher();
+        }
+        await gracefulShutdown(server);
+        await disconnectDatabase();
+        logger.info('✅ Graceful shutdown complete');
+        process.exit(0);
+      } catch (error) {
+        logger.error({ error }, 'Error during shutdown');
+        process.exit(1);
+      }
+    };
+
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+    process.on('SIGINT', () => shutdown('SIGINT'));
 
     // Handle server errors
     server.on('error', (error: any) => {
@@ -115,6 +107,10 @@ async function startServer(): Promise<void> {
         process.exit(1);
       }
     });
+
+    // Ensure background jobs stop on exit
+    process.on('SIGTERM', stopRateFetcher);
+    process.on('SIGINT', stopRateFetcher);
   } catch (error) {
     logger.error({ error }, 'Failed to start server');
     process.exit(1);
